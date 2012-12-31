@@ -1,5 +1,6 @@
+# https://github.com/Artoria/MyAPI
+# Author: Seiran  
 module API
-  
   RMM = Win32API.new("Kernel32", "RtlMoveMemory", "pii", "i")
   
   module_function
@@ -20,14 +21,14 @@ module API
       end
       
       class Integer
-        def pack(str, ofs)
-          str[ofs, 4] = [self].pack("L")
+        def pack
+          [self].pack("L")
         end
       end
       
       class String
-        def pack(str, ofs)
-          str[ofs, 4] = [self].pack("p")
+        def pack
+          [self].pack("p")
         end
       end
       
@@ -36,20 +37,21 @@ module API
   
   class OutL
     include Out
-    def pack(str, ofs); end
+    def pack() "\0\0\0\0" end
     def unpack(packed, ofs); packed[ofs]; end
   end
     
   Out_Long = L = OutL.new
   
   def pack(args, inbuf)
-    packed = "\0"*(args.length*4)
+    packed = ""
     inbuf << packed
     args.each_with_index{|x, i|
       case x
         when Primitive
-          x.pack(packed, i*4)
+          packed << x.pack
         when Out
+          packed << x.pack
         when Array
           packed[i*4, 4] = [pack(x, inbuf)].pack('p')
       end
