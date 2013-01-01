@@ -43,12 +43,24 @@ module API
         end
       end
       
+      class Array
+        def allpacklen
+          inject(0){|a,b| a+b.packlen}
+        end
+        def packlen
+          4
+        end
+      end
+      
     },TOPLEVEL_BINDING
   end
   
   class OutL
     include Out
-    def pack() "\0\0\0\0" end
+    def initialize(value = 0)
+      @value = value
+    end
+    def pack() [@value].pack("L") end
     def unpack(str); str.unpack("L").first end
   end
     
@@ -91,7 +103,7 @@ module API
           unpacked << x.unpack(packed[index, x.packlen])
         when Array
           ptr = packed[index, 4].unpack("L").first
-          str = "\0"*(x.length*4)
+          str = "\0"*x.allpacklen
           RMM.call str, ptr, str.length
           unpacked.concat unpack(x, str)
           index += 4
@@ -101,14 +113,6 @@ module API
     unpacked
   end
   
-  def api(func, name, *args)
-    inbuf     = []
-    packed    = pack(args, inbuf)
-    func = FUNC[func][name] ||= Win32API.new(func, name, "i"*args.length, 'i')
-    ret = func.call *packed.unpack("L*")
-    unpacked  = unpack(args, packed)
-    [ret, *unpacked]
-  end
   
   class CodeBegin
     include In
@@ -153,11 +157,16 @@ module API
   def push();        emit(0x68)             end
     
   def ccall(func, *a)  
-       a.inject([]){|arr,x|arr << push << x}.concat  [call(func),balance(a.length*4)]
+       a.reverse.inject([]){|arr,x|arr << push << x}.concat  [call(func),balance(a.length*4)]
   end
+     
+  def cdecl(func, *a)  
+       a.reverse.inject([]){|arr,x|arr << push << x}.concat  [call(func),balance(a.length*4)]
+  end
+  
     
   def stdcall(func, *a)  
-       a.inject([]){|arr,x| arr << push << x}.concat [call(func)]
+       a.reverse.inject([]){|arr,x| arr << push << x}.concat [call(func)]
   end
      
   def function(*a)
@@ -166,7 +175,26 @@ module API
     result
   end
     
-    
+  def api(func, name, *args)
+    inbuf     = []
+    packed    = pack(args, inbuf)
+    func = FUNC[func][name] ||= Win32API.new(func, name, "i"*args.length, 'i')
+    ret = func.call *packed.unpack("L*")
+    unpacked  = unpack(args, packed)
+    [ret, *unpacked]
+  end
+   
+  def funcaddr(a,b)
+    handle, = api "Kernel32", "GetModuleHandle", a
+    handle, = api "Kernel32", "LoadLibrary", a if handle == 0
+    func,   = api "Kernel32", "GetProcAddress", handle, b
+    func
+  end
+
+  def capi(func, name, *args)
+    addr = funcaddr(func,name)
+    api "User32", "CallWindowProc", function(cdecl(addr, *args)), 0, 0, 0, 0
+  end
   
   init
 end
